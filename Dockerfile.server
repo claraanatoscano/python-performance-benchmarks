@@ -1,0 +1,17 @@
+FROM python:3.12
+
+WORKDIR /app
+
+RUN pip install flask pandas
+
+# Download ACS tract income data at build time
+RUN apt-get update && apt-get install -y wget && \
+    mkdir -p /data && \
+    wget -q https://pages.cs.wisc.edu/~harter/cs544/data/acs5_2021_tract_income_us.csv.gz -O /data/acs5_2021_tract_income_us.csv.gz && \
+    gunzip /data/acs5_2021_tract_income_us.csv.gz
+
+COPY app_server/server.py ./
+
+ENV ACS_DATA=/data/acs5_2021_tract_income_us.csv
+
+CMD ["python", "server.py"]

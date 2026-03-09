@@ -2,16 +2,15 @@ FROM python:3.12
 
 WORKDIR /app
 
-RUN pip install flask pandas
+RUN pip install flask pandas gunicorn requests
 
-# Download ACS tract income data at build time
-RUN apt-get update && apt-get install -y wget && \
-    mkdir -p /data && \
-    wget -q https://pages.cs.wisc.edu/~harter/cs544/data/acs5_2021_tract_income_us.csv.gz -O /data/acs5_2021_tract_income_us.csv.gz && \
-    gunzip /data/acs5_2021_tract_income_us.csv.gz
+# Download ACS tract income data at build time using the provided script
+COPY scripts/download_acs5_tract_income_us.py /tmp/download_acs5_tract_income_us.py
+RUN mkdir -p /data && \
+python /tmp/download_acs5_tract_income_us.py --out /data/acs5_2021_tract_income_us.csv
 
-COPY app_server/server.py ./
+COPY app_server/* ./
 
 ENV ACS_DATA=/data/acs5_2021_tract_income_us.csv
 
-CMD ["python", "server.py"]
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8001", "server:app"]

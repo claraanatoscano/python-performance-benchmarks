@@ -125,6 +125,5 @@ for state in sorted(state_counts):
     under, total = state_counts[state]
     pct = int(100 * under / total) if total > 0 else 0
     safe_print(f"{state}: {pct}% of {total}")
-
 hit_pct = int(100 * total_hits / num_rows) if num_rows > 0 else 0
 safe_print(f"hit rate: {hit_pct}")

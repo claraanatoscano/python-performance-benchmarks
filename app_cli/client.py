@@ -1,16 +1,13 @@
 import zipfile
-import sys
 import threading
 import argparse
 import pyarrow.csv as pv
 import pyarrow.parquet as pq
+import pyarrow as pa
 import cache
 from collections import defaultdict
 import requests
-import pyarrow as pa
 
-
-# Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("datafile")
 parser.add_argument("--rows", type=int, default=-1)
@@ -18,10 +15,8 @@ parser.add_argument("--cache", type=int, default=1000)
 parser.add_argument("--threads", type=int, default=4)
 args = parser.parse_args()
 
-# Initialize cache
 cache.init_cache(args.cache)
 
-# Read the data file
 columns = ["state_code", "census_tract", "income"]
 
 if args.datafile.endswith(".parquet"):
@@ -33,16 +28,25 @@ elif args.datafile.endswith(".zip"):
         column_types={
             "state_code": pa.string(),
             "census_tract": pa.string(),
-            "income": pa.int64()
+            "income": pa.float64()
         }
     )
     with zipfile.ZipFile(args.datafile) as zf:
         inner_csv = zf.namelist()[0]
         with zf.open(inner_csv) as f:
+            print("Reading CSV from ZIP...")
             table = pv.read_csv(f, convert_options=options)
+            print("CSV loaded")
 
 elif args.datafile.endswith(".csv"):
-    options = pv.ConvertOptions(include_columns=columns)
+    options = pv.ConvertOptions(
+        include_columns=columns,
+        column_types={
+            "state_code": pa.string(),
+            "census_tract": pa.string(),
+            "income": pa.float64()
+        }
+    )
     table = pv.read_csv(args.datafile, convert_options=options)
 
 else:
@@ -54,13 +58,11 @@ if args.rows > 0:
 
 num_rows = table.num_rows
 
-# Thread-safe counters
 lock = threading.Lock()
 state_counts = defaultdict(lambda: [0, 0])  # state -> [under_count, total_count]
 total_hits = 0
 total_requests = 0
 
-# Worker function
 def worker(start, end):
     global total_hits, total_requests
     local_hits = 0
@@ -72,10 +74,25 @@ def worker(start, end):
             tract = table.column("census_tract")[i].as_py()
             income = table.column("income")[i].as_py()
 
-            if not tract or not state or not income or income <= 0:
+            # Validate tract
+            if not tract or not tract.strip().isdigit():
+                continue
+            tract_int = int(tract.strip())
+            if tract_int < 0:
+                continue
+            tract_norm = f"{tract_int:011d}"  # normalize to 11-digit string
+
+            # Validate income
+            if income is None:
+                continue
+            try:
+                income_val = float(income)
+            except:
+                continue
+            if income_val <= 0 or not income_val < float("inf"):
                 continue
 
-            url = f"http://server:8001/{tract}"
+            url = f"http://server:8001/{tract_norm}"
             content, hit = cache.http_get(url, requests.Session())
             local_requests += 1
 
@@ -89,18 +106,19 @@ def worker(start, end):
 
             with lock:
                 state_counts[state][1] += 1
-                if income < tract_median:
+                if income_val < tract_median:
                     state_counts[state][0] += 1
 
-        except:
+        except Exception as e:
+            # Debug print for errors
+            print(f"Worker error at row {i}: {e}")
             continue
 
+    # Update global counters
     with lock:
         total_hits += local_hits
         total_requests += local_requests
 
-
-# Split work among threads
 threads = []
 step = (num_rows + args.threads - 1) // args.threads
 
@@ -116,10 +134,13 @@ for t in range(args.threads):
 for thread in threads:
     thread.join()
 
-# Print results
 for state in sorted(state_counts):
     under, total = state_counts[state]
-    pct = int(100 * under / total)
+    pct = int(100 * under / total) if total > 0 else 0
     print(f"{state}: {pct}% of {total}")
 
-print(f"hit rate: {int(100 * total_hits / total_requests)}%")
+hit_rate = int(100 * total_hits / total_requests) if total_requests > 0 else 0
+print(f"hit rate: {hit_rate}%")
+print("rows:", num_rows)
+print("requests:", total_requests)
+print("hits:", total_hits)

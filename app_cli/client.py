@@ -1,3 +1,4 @@
+import zipfile
 import sys
 import threading
 import argparse
@@ -5,6 +6,7 @@ import pyarrow.csv as pv
 import pyarrow.parquet as pq
 import cache
 from collections import defaultdict
+import requests
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
@@ -21,9 +23,12 @@ cache.init_cache(args.cache)
 columns = ["state_code", "census_tract", "income"]
 if args.datafile.endswith(".parquet"):
     table = pq.read_table(args.datafile, columns=columns)
-elif args.datafile.endswith(".zip") or args.datafile.endswith(".csv"):
+elif args.datafile.endswith(".zip"):
     options = pv.ConvertOptions(include_columns=columns)
-    table = pv.read_csv(args.datafile, convert_options=options)
+    with zipfile.ZipFile(args.datafile) as zf:
+        inner_csv = zf.namelist()[0]
+        with zf.open(inner_csv) as f:
+            table = pv.read_csv(f, convert_options=options)
 else:
     raise ValueError("Unsupported file type")
 

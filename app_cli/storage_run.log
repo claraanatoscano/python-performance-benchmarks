@@ -1,0 +1,12 @@
+nohup: ignoring input
+the input device is not a TTY
+Benchmarking CSV (zipped)...
+Traceback (most recent call last):
+  File "/home/atoscano2@ad.wisc.edu/p3_atoscano2/p3_atoscano2/app_cli/benchmark_storage.py", line 33, in <module>
+    csv_time = benchmark(csv_file)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/atoscano2@ad.wisc.edu/p3_atoscano2/p3_atoscano2/app_cli/benchmark_storage.py", line 19, in benchmark
+    subprocess.run(
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['docker', 'exec', '-it', 'p3-client-1', 'python3.13-nogil', '/app/client.py', '/data/2021_public_lar_csv.zip', '--rows', '0', '--cache', '5000', '--threads', '4']' returned non-zero exit status 1.
